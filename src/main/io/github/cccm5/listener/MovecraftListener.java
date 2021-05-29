@@ -12,6 +12,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 
 import java.util.List;
@@ -21,27 +22,30 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class MovecraftListener implements Listener {
     DirectorManager manager = SquadronDirectorMain.getInstance().getDirectorManager();
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onCraftSink(CraftSinkEvent event) {
-        if (event.isCancelled())
-            return;
-        final Craft craft = event.getCraft();
-        final DirectorManager manager = SquadronDirectorMain.getInstance().getDirectorManager();
-        final Player notifyP = craft.getNotificationPlayer();
-        final List<Craft> directed = manager.getDirectedCrafts().getOrDefault(notifyP, new CopyOnWriteArrayList<>());
+        Craft craft = event.getCraft();
+        DirectorManager manager = SquadronDirectorMain.getInstance().getDirectorManager();
+        List<Craft> directed = manager.getDirectedCrafts().getOrDefault(craft.getNotificationPlayer(), new CopyOnWriteArrayList<>());
         if (!directed.contains(craft)) {
             return;
         }
         directed.remove(craft);
     }
 
-    @EventHandler
-    public void onRelease(final CraftReleaseEvent event) {
-        if (!manager.getDirectedCrafts().containsKey(event.getCraft().getNotificationPlayer())) {
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onRelease(CraftReleaseEvent event) {
+        Player player = event.getCraft().getNotificationPlayer();
+        if (player == null) {
             return;
         }
-        manager.getDirectedCrafts().get(event.getCraft().getNotificationPlayer()).remove(event.getCraft());
-        if (!manager.getDirectedCrafts().get(event.getCraft().getNotificationPlayer()).isEmpty()) {
+
+        if (!manager.getDirectedCrafts().containsKey(player)) {
+            return;
+        }
+        manager.getDirectedCrafts().get(player).remove(event.getCraft());
+
+        if (!manager.getDirectedCrafts().get(player).isEmpty()) {
             return;
         }
         manager.getDirectedCrafts().remove(event.getCraft().getNotificationPlayer());

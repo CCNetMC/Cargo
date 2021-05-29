@@ -21,10 +21,8 @@ public static final String SUCCESS_TAG = ChatColor.DARK_AQUA + "Squadron Directo
 
 
 private static SquadronDirectorMain instance;
-private static Material SIGN_POST = Material.getMaterial("SIGN_POST");
 private CraftManager craftManager;
 private FileConfiguration config;
-private boolean cardinalDistance;
 private DirectorManager directorManager;
 private static boolean debug;
 
@@ -80,13 +78,6 @@ private static boolean debug;
         instance = null;
     }
 
-
-
-
-
-
-
-
     public static boolean isDebug(){
         return debug;
     }
@@ -94,11 +85,6 @@ private static boolean debug;
     public static SquadronDirectorMain getInstance(){
         return instance;
     }
-
-
-
-
-
 
     @Override
     public FileConfiguration getConfig() {

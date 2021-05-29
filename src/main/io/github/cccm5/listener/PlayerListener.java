@@ -2,6 +2,7 @@ package io.github.cccm5.listener;
 
 import io.github.cccm5.SquadronDirectorMain;
 import io.github.cccm5.managers.DirectorManager;
+import net.countercraft.movecraft.CruiseDirection;
 import net.countercraft.movecraft.Movecraft;
 import net.countercraft.movecraft.MovecraftLocation;
 import net.countercraft.movecraft.Rotation;
@@ -16,6 +17,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.Sign;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -46,244 +48,259 @@ public class PlayerListener implements Listener {
     private final DirectorManager manager = SquadronDirectorMain.getInstance().getDirectorManager();
 
     @EventHandler
-    public void onPlayerMove(PlayerMoveEvent e) {
-        Player player=e.getPlayer();
-        if(manager.getPlayersInReconSignLocation().get(player)!=null) {
-            if(player.getPotionEffect(PotionEffectType.INVISIBILITY)==null) {
-                return;
-            }
-            if(player.getPotionEffect(PotionEffectType.INVISIBILITY).getDuration()>2479*20){ // wait a second before accepting any more move inputs
-                return;
-            }
-            // make Movecraft not release the craft due to the player being in recon, and not on the craft
-            Craft playerCraft= CraftManager.getInstance().getCraftByPlayer(player);
-            if(playerCraft!=null) {
-                HandlerList handlers=e.getHandlers();
-                RegisteredListener[] listeners=handlers.getRegisteredListeners();
-                for (RegisteredListener l : listeners) {
-                    if (!l.getPlugin().isEnabled()) {
-                        continue;
-                    }
-                    if(l.getListener() instanceof net.countercraft.movecraft.listener.PlayerListener) {
-                        net.countercraft.movecraft.listener.PlayerListener pl= (net.countercraft.movecraft.listener.PlayerListener) l.getListener();
-                        Class plclass= net.countercraft.movecraft.listener.PlayerListener.class;
-                        try {
-                            Field field = plclass.getDeclaredField("timeToReleaseAfter");
-                            field.setAccessible(true);
-                            final Map<Craft, Long> timeToReleaseAfter = (Map<Craft, Long>) field.get(pl);
-                            if(timeToReleaseAfter.containsKey(playerCraft)) {
-                                timeToReleaseAfter.put(playerCraft,System.currentTimeMillis() + 30000);
-                            }
-                        }
-                        catch(Exception exception) {
-                            exception.printStackTrace();
-                        }
-                    }
-                }
-            }
-            Craft leadCraft=null;
-            for(Craft c : manager.getDirectedCrafts().get(player)) {
-                if ((c == null) || (c.getHitBox().isEmpty())) {
+    public void onPlayerMove(PlayerMoveEvent event) {
+        if (!event.hasChangedPosition()) {
+            return;
+        }
+
+        Player player = event.getPlayer();
+        if (manager.getPlayersInReconSignLocation().get(player) == null) {
+            return;
+        }
+
+        if (!player.hasPotionEffect(PotionEffectType.INVISIBILITY)) {
+            return;
+        }
+
+        if (player.getPotionEffect(PotionEffectType.INVISIBILITY).getDuration() > 2479 * 20) { // wait a second before accepting any more move inputs
+            return;
+        }
+
+        // make Movecraft not release the craft due to the player being in recon, and not on the craft
+        Craft playerCraft = CraftManager.getInstance().getCraftByPlayer(player);
+        if (playerCraft != null) {
+            HandlerList handlers = event.getHandlers();
+            RegisteredListener[] listeners = handlers.getRegisteredListeners();
+            for (RegisteredListener l : listeners) {
+                if (!l.getPlugin().isEnabled()) {
                     continue;
                 }
-                manager.determineCruiseDirection(c);
-
-                if (leadCraft == null) {
-                    leadCraft=c;
-                    break;
+                if (l.getListener() instanceof net.countercraft.movecraft.listener.PlayerListener) {
+                    net.countercraft.movecraft.listener.PlayerListener pl = (net.countercraft.movecraft.listener.PlayerListener) l.getListener();
+                    Class plclass = net.countercraft.movecraft.listener.PlayerListener.class;
+                    try {
+                        Field field = plclass.getDeclaredField("timeToReleaseAfter");
+                        field.setAccessible(true);
+                        final Map<Craft, Long> timeToReleaseAfter = (Map<Craft, Long>) field.get(pl);
+                        if (timeToReleaseAfter.containsKey(playerCraft)) {
+                            timeToReleaseAfter.put(playerCraft, System.currentTimeMillis() + 30000);
+                        }
+                    } catch (Exception exception) {
+                        exception.printStackTrace();
+                    }
                 }
             }
-            if(leadCraft==null) {
+        }
+        Craft leadCraft = null;
+        if (!manager.getDirectedCrafts().containsKey(player)) {
+            return;
+        }
+        for (Craft c : manager.getDirectedCrafts().get(player)) {
+            if ((c == null) || (c.getHitBox().isEmpty())) {
+                continue;
+            }
+            manager.determineCruiseDirection(c);
+
+            leadCraft = c;
+            break;
+        }
+        if (leadCraft == null) {
+            return;
+        }
+
+        double dx = event.getTo().getX() - event.getFrom().getX();
+        double dy = event.getTo().getY() - event.getFrom().getY();
+        double dz = event.getTo().getZ() - event.getFrom().getZ();
+        if (manager.getDirectedCrafts().get(player) == null || manager.getDirectedCrafts().get(player).isEmpty()) {
+            return;
+        }
+
+        if (dy > 0.07) {
+            event.setCancelled(true);
+            player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 2480 * 20, 1, true, false));
+            if (manager.getPlayersStrafingUpDown().get(player) == null) {
+                manager.getPlayersStrafingUpDown().put(player, 1);
+                player.sendMessage(SUCCESS_TAG + "Ascent enabled");
                 return;
             }
-
-            double dx=e.getTo().getX()-e.getFrom().getX();
-            double dy=e.getTo().getY()-e.getFrom().getY();
-            double dz=e.getTo().getZ()-e.getFrom().getZ();
-            if(manager.getDirectedCrafts().get(player)==null || manager.getDirectedCrafts().get(player).isEmpty()) {
+            if (manager.getPlayersStrafingUpDown().get(player) == 2) {
+                manager.getPlayersStrafingUpDown().remove(player);
+                player.sendMessage(SUCCESS_TAG + "Descent disabled");
                 return;
             }
-            if(dy>0.07) {
-                e.setCancelled(true);
-                player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 2480 * 20, 1, false, false));
-                if(manager.getPlayersStrafingUpDown().get(player)==null) {
-                    manager.getPlayersStrafingUpDown().put(player,1);
-                    player.sendMessage(SUCCESS_TAG+"Ascent enabled");
+        }
+
+        if (dy < -0.07) {
+            event.setCancelled(true);
+            player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 2480 * 20, 1, true, false));
+            if (manager.getPlayersStrafingUpDown().get(player) == null) {
+                manager.getPlayersStrafingUpDown().put(player, 2);
+                player.sendMessage(SUCCESS_TAG + "Descent enabled");
+                return;
+            }
+            if (manager.getPlayersStrafingUpDown().get(player) == 1) {
+                manager.getPlayersStrafingUpDown().remove(player);
+                player.sendMessage(SUCCESS_TAG + "Ascent disabled");
+                return;
+            }
+        }
+
+        // ship faces west
+        if (leadCraft.getCruiseDirection() == CruiseDirection.fromBlockFace(BlockFace.WEST)) {
+            if (dz < -0.07) {
+                event.setCancelled(true);
+                if (manager.getPlayersStrafingLeftRight().get(player) == null) {
+                    manager.getPlayersStrafingLeftRight().put(player, 2);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Right enabled");
                     return;
                 }
-                if(manager.getPlayersStrafingUpDown().get(player)==2) {
-                    manager.getPlayersStrafingUpDown().remove(player);
-                    player.sendMessage(SUCCESS_TAG+"Descent disabled");
+                if (manager.getPlayersStrafingLeftRight().get(player) == 1) {
+                    manager.getPlayersStrafingLeftRight().remove(player);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Left disabled");
                     return;
                 }
             }
-            if(dy<-0.07) {
-                e.setCancelled(true);
-                player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 2480 * 20, 1, false, false));
-                if(manager.getPlayersStrafingUpDown().get(player)==null) {
-                    manager.getPlayersStrafingUpDown().put(player,2);
-                    player.sendMessage(SUCCESS_TAG+"Descent enabled");
+            if (dz > 0.07) {
+                event.setCancelled(true);
+                if (manager.getPlayersStrafingLeftRight().get(player) == null) {
+                    manager.getPlayersStrafingLeftRight().put(player, 1);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Left enabled");
                     return;
                 }
-                if(manager.getPlayersStrafingUpDown().get(player)==1) {
-                    manager.getPlayersStrafingUpDown().remove(player);
-                    player.sendMessage(SUCCESS_TAG+"Ascent disabled");
+                if (manager.getPlayersStrafingLeftRight().get(player) == 2) {
+                    manager.getPlayersStrafingLeftRight().remove(player);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Right disabled");
                     return;
                 }
             }
-            // ship faces west
-            if (leadCraft.getCruiseDirection() == 0x5) {
-                if(dz<-0.07) {
-                    e.setCancelled(true);
-                    if(manager.getPlayersStrafingLeftRight().get(player)==null) {
-                        manager.getPlayersStrafingLeftRight().put(player,2);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Right enabled");
-                        return;
-                    }
-                    if(manager.getPlayersStrafingLeftRight().get(player)==1) {
-                        manager.getPlayersStrafingLeftRight().remove(player);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Left disabled");
-                        return;
-                    }
+            if (dx < -0.07) {
+                event.setCancelled(true);
+                manager.cruiseEnable(player);
+            }
+            if (dx > 0.07) {
+                event.setCancelled(true);
+                manager.cruiseDisable(player);
+            }
+        }
+
+        // ship faces east
+        if (leadCraft.getCruiseDirection() == CruiseDirection.fromBlockFace(BlockFace.EAST)) {
+            if (dz > 0.07) {
+                event.setCancelled(true);
+                if (manager.getPlayersStrafingLeftRight().get(player) == null) {
+                    manager.getPlayersStrafingLeftRight().put(player, 2);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Right enabled");
+                    return;
                 }
-                if(dz>0.07) {
-                    e.setCancelled(true);
-                    if(manager.getPlayersStrafingLeftRight().get(player)==null) {
-                        manager.getPlayersStrafingLeftRight().put(player,1);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Left enabled");
-                        return;
-                    }
-                    if(manager.getPlayersStrafingLeftRight().get(player)==2) {
-                        manager.getPlayersStrafingLeftRight().remove(player);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Right disabled");
-                        return;
-                    }
-                }
-                if (dx < -0.07) {
-                    e.setCancelled(true);
-                    manager.cruiseEnable(player);
-                }
-                if (dx > 0.07) {
-                    e.setCancelled(true);
-                    manager.cruiseDisable(player);
+                if (manager.getPlayersStrafingLeftRight().get(player) == 1) {
+                    manager.getPlayersStrafingLeftRight().remove(player);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Left disabled");
+                    return;
                 }
             }
-            // ship faces east
-            if (leadCraft.getCruiseDirection() == 0x4) {
-                if(dz>0.07) {
-                    e.setCancelled(true);
-                    if(manager.getPlayersStrafingLeftRight().get(player)==null) {
-                        manager.getPlayersStrafingLeftRight().put(player,2);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Right enabled");
-                        return;
-                    }
-                    if(manager.getPlayersStrafingLeftRight().get(player)==1) {
-                        manager.getPlayersStrafingLeftRight().remove(player);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Left disabled");
-                        return;
-                    }
+            if (dz < -0.07) {
+                event.setCancelled(true);
+                if (manager.getPlayersStrafingLeftRight().get(player) == null) {
+                    manager.getPlayersStrafingLeftRight().put(player, 1);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Left enabled");
+                    return;
                 }
-                if(dz<-0.07) {
-                    e.setCancelled(true);
-                    if(manager.getPlayersStrafingLeftRight().get(player)==null) {
-                        manager.getPlayersStrafingLeftRight().put(player,1);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Left enabled");
-                        return;
-                    }
-                    if(manager.getPlayersStrafingLeftRight().get(player)==2) {
-                        manager.getPlayersStrafingLeftRight().remove(player);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Right disabled");
-                        return;
-                    }
-                }
-                if (dx > 0.07) {
-                    e.setCancelled(true);
-                    manager.cruiseEnable(player);
-                }
-                if (dx < -0.07) {
-                    e.setCancelled(true);
-                    manager.cruiseDisable(player);
+                if (manager.getPlayersStrafingLeftRight().get(player) == 2) {
+                    manager.getPlayersStrafingLeftRight().remove(player);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Right disabled");
+                    return;
                 }
             }
-            // ship faces north
-            if (leadCraft.getCruiseDirection() == 0x2) {
-                if(dx<-0.07) {
-                    e.setCancelled(true);
-                    if(manager.getPlayersStrafingLeftRight().get(player)==null) {
-                        manager.getPlayersStrafingLeftRight().put(player,2);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Right enabled");
-                        return;
-                    }
-                    if(manager.getPlayersStrafingLeftRight().get(player)==1) {
-                        manager.getPlayersStrafingLeftRight().remove(player);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Left disabled");
-                        return;
-                    }
+            if (dx > 0.07) {
+                event.setCancelled(true);
+                manager.cruiseEnable(player);
+            }
+            if (dx < -0.07) {
+                event.setCancelled(true);
+                manager.cruiseDisable(player);
+            }
+        }
+
+        // ship faces north
+        if (leadCraft.getCruiseDirection() == CruiseDirection.fromBlockFace(BlockFace.NORTH)) {
+            if (dx < -0.07) {
+                event.setCancelled(true);
+                if (manager.getPlayersStrafingLeftRight().get(player) == null) {
+                    manager.getPlayersStrafingLeftRight().put(player, 2);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Right enabled");
+                    return;
                 }
-                if(dx>0.07) {
-                    e.setCancelled(true);
-                    if(manager.getPlayersStrafingLeftRight().get(player)==null) {
-                        manager.getPlayersStrafingLeftRight().put(player,1);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Left enabled");
-                        return;
-                    }
-                    if(manager.getPlayersStrafingLeftRight().get(player)==2) {
-                        manager.getPlayersStrafingLeftRight().remove(player);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Right disabled");
-                        return;
-                    }
-                }
-                if (dz > 0.07) {
-                    e.setCancelled(true);
-                    manager.cruiseEnable(player);
-                }
-                if (dz < -0.07) {
-                    e.setCancelled(true);
-                    manager.cruiseDisable(player);
+                if (manager.getPlayersStrafingLeftRight().get(player) == 1) {
+                    manager.getPlayersStrafingLeftRight().remove(player);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Left disabled");
+                    return;
                 }
             }
-            // ship faces south
-            if (leadCraft.getCruiseDirection() == 0x3) {
-                if(dx>0.07) {
-                    e.setCancelled(true);
-                    if(manager.getPlayersStrafingLeftRight().get(player)==null) {
-                        manager.getPlayersStrafingLeftRight().put(player,2);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Right enabled");
-                        return;
-                    }
-                    if(manager.getPlayersStrafingLeftRight().get(player)==1) {
-                        manager.getPlayersStrafingLeftRight().remove(player);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Left disabled");
-                        return;
-                    }
+            if (dx > 0.07) {
+                event.setCancelled(true);
+                if (manager.getPlayersStrafingLeftRight().get(player) == null) {
+                    manager.getPlayersStrafingLeftRight().put(player, 1);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Left enabled");
+                    return;
                 }
-                if(dx<-0.07) {
-                    e.setCancelled(true);
-                    if(manager.getPlayersStrafingLeftRight().get(player)==null) {
-                        manager.getPlayersStrafingLeftRight().put(player,1);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Left enabled");
-                        return;
-                    }
-                    if(manager.getPlayersStrafingLeftRight().get(player)==2) {
-                        manager.getPlayersStrafingLeftRight().remove(player);
-                        player.sendMessage(SUCCESS_TAG+"Strafe Right disabled");
-                        return;
-                    }
+                if (manager.getPlayersStrafingLeftRight().get(player) == 2) {
+                    manager.getPlayersStrafingLeftRight().remove(player);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Right disabled");
+                    return;
                 }
-                if (dz < -0.07) {
-                    e.setCancelled(true);
-                    manager.cruiseEnable(player);
+            }
+            if (dz > 0.07) {
+                event.setCancelled(true);
+                manager.cruiseEnable(player);
+            }
+            if (dz < -0.07) {
+                event.setCancelled(true);
+                manager.cruiseDisable(player);
+            }
+        }
+
+        // ship faces south
+        if (leadCraft.getCruiseDirection() == CruiseDirection.fromBlockFace(BlockFace.SOUTH)) {
+            if (dx > 0.07) {
+                event.setCancelled(true);
+                if (manager.getPlayersStrafingLeftRight().get(player) == null) {
+                    manager.getPlayersStrafingLeftRight().put(player, 2);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Right enabled");
+                    return;
                 }
-                if (dz > 0.07) {
-                    e.setCancelled(true);
-                    manager.cruiseDisable(player);
+                if (manager.getPlayersStrafingLeftRight().get(player) == 1) {
+                    manager.getPlayersStrafingLeftRight().remove(player);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Left disabled");
+                    return;
                 }
+            }
+            if (dx < -0.07) {
+                event.setCancelled(true);
+                if (manager.getPlayersStrafingLeftRight().get(player) == null) {
+                    manager.getPlayersStrafingLeftRight().put(player, 1);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Left enabled");
+                    return;
+                }
+                if (manager.getPlayersStrafingLeftRight().get(player) == 2) {
+                    manager.getPlayersStrafingLeftRight().remove(player);
+                    player.sendMessage(SUCCESS_TAG + "Strafe Right disabled");
+                    return;
+                }
+            }
+            if (dz < -0.07) {
+                event.setCancelled(true);
+                manager.cruiseEnable(player);
+            }
+            if (dz > 0.07) {
+                event.setCancelled(true);
+                manager.cruiseDisable(player);
             }
         }
     }
 
+
     //Prevent players in recon mode from teleporting to other worlds
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
         if (event.getFrom().getWorld().equals(event.getTo().getWorld()))
             return;
@@ -298,19 +315,4 @@ public class PlayerListener implements Listener {
     }
 
 
-    @Nullable
-    private final Craft craftSignIsOn(Sign sign) {
-        MovecraftLocation mloc = MathUtils.bukkit2MovecraftLoc(sign.getLocation());
-        CraftManager.getInstance().getCraftsInWorld(sign.getWorld());
-        for (Craft craft : CraftManager.getInstance().getCraftsInWorld(sign.getWorld())) {
-            if (craft == null || craft.getDisabled()) {
-                continue;
-            }
-            if (!craft.getHitBox().contains(mloc)) {
-                continue;
-            }
-            return craft;
-        }
-        return null;
-    }
 }

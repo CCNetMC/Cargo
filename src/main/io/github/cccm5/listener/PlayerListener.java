@@ -3,44 +3,24 @@ package io.github.cccm5.listener;
 import io.github.cccm5.SquadronDirectorMain;
 import io.github.cccm5.managers.DirectorManager;
 import net.countercraft.movecraft.CruiseDirection;
-import net.countercraft.movecraft.Movecraft;
-import net.countercraft.movecraft.MovecraftLocation;
-import net.countercraft.movecraft.Rotation;
 import net.countercraft.movecraft.craft.Craft;
 import net.countercraft.movecraft.craft.CraftManager;
-import net.countercraft.movecraft.craft.CraftType;
-import net.countercraft.movecraft.craft.ICraft;
-import net.countercraft.movecraft.events.CraftPilotEvent;
-import net.countercraft.movecraft.utils.BitmapHitBox;
-import net.countercraft.movecraft.utils.MathUtils;
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.block.BlockFace;
-import org.bukkit.block.Sign;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.Action;
-import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.plugin.RegisteredListener;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
-import org.bukkit.scheduler.BukkitRunnable;
-import org.jetbrains.annotations.Nullable;
-
 
 import java.lang.reflect.Field;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 
-import static io.github.cccm5.SquadronDirectorMain.ERROR_TAG;
 import static io.github.cccm5.SquadronDirectorMain.SUCCESS_TAG;
 
 public class PlayerListener implements Listener {
@@ -300,11 +280,11 @@ public class PlayerListener implements Listener {
 
 
     //Prevent players in recon mode from teleporting to other worlds
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
-        if (event.getFrom().getWorld().equals(event.getTo().getWorld()))
-            return;
         if (!manager.getPlayersInReconParentCrafts().containsKey(event.getPlayer()))
+            return;
+        if (event.getFrom().getWorld().equals(event.getTo().getWorld()))
             return;
         event.setCancelled(true);
     }
